@@ -87,7 +87,7 @@ docker attach amneziabot
 docker run -d -v $(pwd)/users.json:/app/users.json --name amneziabot amneziabot && docker attach amneziabot
 ```
 
-## Dependencies
+## Зависимости
 
 - [aiogram](https://aiogram.dev)
 
