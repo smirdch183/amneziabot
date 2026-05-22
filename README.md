@@ -89,8 +89,7 @@ docker run -d -v $(pwd)/users.json:/app/users.json --name amneziabot amneziabot 
 
 ## Dependencies
 
-- [aiogram](https://github.com/eternnoir/pyTelegramBotAPI/)
-- [zoneinfo](https://pypi.org/project/python-dotenv/)
+- [aiogram](https://aiogram.dev)
 
 ## Отказ от ответственности
 
