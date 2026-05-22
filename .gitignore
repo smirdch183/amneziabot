@@ -1,4 +1,5 @@
 /.venv
 /config.py
-/users.json
+# /users.json
 /__pycache__
+/config_my.py
