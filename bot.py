@@ -2,14 +2,18 @@ import json
 import asyncio
 import logging
 import sys
+import os
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from aiogram import Bot, Dispatcher, F
-from aiogram.types import Message, CallbackQuery
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import Message, CallbackQuery, FSInputFile
+# from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command
 
 from config import TOKEN, ADMIN_ID
+from keyboard import *
+from utils import now, backup_json
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
@@ -19,13 +23,7 @@ DB_FILE = "users.json"
 broadcast_mode = {}
 pending_sub_text = {}
 custom_date_state = {}
-
-
-# ---------------- TIME ----------------
-
-def now():
-    return datetime.now().replace(microsecond=0)
-
+last_bot_messages = {}
 
 # ---------------- JSON ----------------
 
@@ -58,60 +56,6 @@ def add_user(user_id, username, first_name):
         return True
 
     return False
-
-
-# ---------------- KEYBOARDS ----------------
-
-def base_kb():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📅 Моя подписка", callback_data="my_sub")]
-    ])
-
-
-def admin_kb():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📅 Моя подписка", callback_data="my_sub")],
-        [InlineKeyboardButton(text="👥 Пользователи", callback_data="users")],
-        [InlineKeyboardButton(text="📢 Рассылка", callback_data="broadcast")]
-    ])
-
-def cancel_broadcast_kb():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="❌ Отменить рассылку", callback_data="cancel_broadcast")]
-    ])
-
-def copy_kb(text: str):
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📋 Скопировать", copy_text={"text": text})]
-    ])
-
-
-def user_manage_kb(uid):
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="➕1", callback_data=f"add_{uid}_1"),
-            InlineKeyboardButton(text="➕7", callback_data=f"add_{uid}_7"),
-            InlineKeyboardButton(text="➕30", callback_data=f"add_{uid}_30"),
-        ],
-        [
-            InlineKeyboardButton(text="📅 Кастом дата", callback_data=f"custom_{uid}"),
-            InlineKeyboardButton(text="📝 Установить доступ", callback_data=f"setsub_{uid}")
-        ],
-        [InlineKeyboardButton(text="❌ Удалить", callback_data=f"del_{uid}")],
-        [InlineKeyboardButton(text="⬅️ Назад", callback_data="users")]
-    ])
-
-
-def users_kb(users):
-    kb = []
-    for uid, u in users.items():
-        kb.append([
-            InlineKeyboardButton(
-                text=f"{u.get('first_name')} ({uid})",
-                callback_data=f"user_{uid}"
-            )
-        ])
-    return InlineKeyboardMarkup(inline_keyboard=kb)
 
 
 # ---------------- START ----------------
@@ -151,25 +95,37 @@ async def my_sub(call: CallbackQuery):
     u = users.get(uid)
 
     if not u or not u.get("subscription_text"):
-        await call.message.answer("❌ Подписка не активна")
+        delet_messages = await call.message.answer("❌ Подписка не активна")
+        await asyncio.sleep(5)
+        try:
+            await delet_messages.delete()
+        except:
+            pass
         return
     
     end = datetime.fromisoformat(u["subscription_end"])
     days_left = (end.date() - now().date()).days
 
     if days_left <= 0:
-        await call.message.answer("❌ Ваша подписка истекла")
+        delet_messages = await call.message.answer("❌ Ваша подписка истекла")
+        await asyncio.sleep(5)
+        try:
+            await delet_messages.delete()
+        except:
+            pass
         return
 
     await call.message.answer(
         f"📅 Подписка:\n"
-        # f"{u['subscription_text']}\n\n"
         f"⏳ До: {end.strftime('%Y-%m-%d %H:%M')}\n"
         f"📊 Осталось дней: {days_left}\n"
         f"‼️Не делитесь впн с другими пользователями, в избежание блокировки данного впн или вашего подключения‼️\n"
         f"📱 Вставьте в приложение AmneziaVpn\n"
-        f"https://github.com/amnezia-vpn/amnezia-client/releases",
-        reply_markup=copy_kb(u["subscription_text"])
+        f"https://github.com/amnezia-vpn/amnezia-client/releases\n"
+        f"👇 Нажмите что бы скопировать\n"
+        f"`{u['subscription_text']}`",
+        parse_mode="Markdown",
+        reply_markup=back_kb()
     )
 
 
@@ -180,7 +136,7 @@ async def users(call: CallbackQuery):
     if call.from_user.id != ADMIN_ID:
         return
 
-    await call.message.answer("👥 Пользователи:", reply_markup=users_kb(load_users()))
+    await call.message.answer("Дата и время сейчас: " + now().strftime("%Y-%m-%d %H:%M:%S") + "\n‼️ - Пустой\n⌛️ - Закончилась подписка\n❌ - Подски нет\n👥 Пользователи:", reply_markup=users_kb(load_users()))
 
 
 @dp.callback_query(F.data.startswith("user_"))
@@ -197,6 +153,7 @@ async def user_open(call: CallbackQuery):
     await call.message.answer(
         f"👤 {u['first_name']}\n"
         f"ID: {uid}\n"
+        f"Username: @{u.get('username')}\n"
         f"Доступ: {u.get('subscription_text')}\n"
         f"До: {u.get('subscription_end')}",
         reply_markup=user_manage_kb(uid)
@@ -235,7 +192,12 @@ async def add_days(call: CallbackQuery):
     except:
         pass
 
-    await call.message.answer("✅ Обновлено")
+    delet_messages = await call.message.answer("✅ Обновлено")
+    await asyncio.sleep(5)
+    try:
+        await delet_messages.delete()
+    except:
+        pass
 
 
 # ---------------- CUSTOM DATE ----------------
@@ -245,10 +207,14 @@ async def custom(call: CallbackQuery):
     if call.from_user.id != ADMIN_ID:
         return
 
+    await call.message.delete()
+
     uid = call.data.split("_")[1]
     custom_date_state[call.from_user.id] = uid
 
-    await call.message.answer("📅 Введите дату: YYYY-MM-DD HH:MM")
+    new_message = await call.message.answer("📅 Введите дату: YYYY-MM-DD HH:MM", reply_markup=cancel_kb())
+
+    last_bot_messages[call.from_user.id] = new_message.message_id
 
 
 # ---------------- SET SUB TEXT ----------------
@@ -258,16 +224,92 @@ async def setsub(call: CallbackQuery):
     if call.from_user.id != ADMIN_ID:
         return
 
+    await call.message.delete()
+
     uid = call.data.split("_")[1]
     pending_sub_text[call.from_user.id] = uid
 
-    await call.message.answer("✍️ Введите текст доступа:")
+    new_message = await call.message.answer("✍️ Введите текст доступа:", reply_markup=cancel_kb())
+
+    last_bot_messages[call.from_user.id] = new_message.message_id
 
 
 # ---------------- DELETE ----------------
 
 @dp.callback_query(F.data.startswith("del_"))
 async def delete(call: CallbackQuery):
+    if call.from_user.id != ADMIN_ID:
+        return
+
+    await call.message.delete()
+
+    uid = call.data.split("_")[1]
+
+    # users = load_users()
+
+    u = load_users().get(uid)
+
+    first_name = u.get("first_name") or "Без имени"
+    username = u.get("username") or "без_username"
+
+    await call.message.answer("🗑 Удалить " + first_name + " @" + username + " (" + uid + ")?", reply_markup=confirm_delete_kb(uid))
+
+    # if uid in users:
+    #     del users[uid]
+    #     save_users(users)
+
+    # await call.message.answer("🗑 Удален")
+
+
+# ---------------- CONFIRM DELETE ----------------
+
+@dp.callback_query(F.data.startswith("confirm_del_"))
+async def confirm_del(call: CallbackQuery):
+    if call.from_user.id != ADMIN_ID:
+        return
+
+    uid = call.data.split("_")[2]
+
+    users = load_users()
+
+    u = load_users().get(uid)
+
+    if uid in users:
+        del users[uid]
+        save_users(users)
+
+    first_name = u.get("first_name") or "Без имени"
+    username = u.get("username") or "без_username"
+
+    await call.message.delete()
+
+    await call.message.answer("🗑 Удален " + first_name + " @" + username + " (" + uid + ")")
+
+
+# ---------------- NOT CONFIRM DELETE ----------------
+
+# @dp.callback_query(F.data.startswith("not_confirm_del_"))
+# async def not_confirm_del(call: CallbackQuery):
+#     if call.from_user.id != ADMIN_ID:
+#         return
+
+#     await call.message.delete()
+
+
+# ---------------- MAIN ----------------
+
+@dp.callback_query(F.data.startswith("main"))
+async def back(call: CallbackQuery):
+    # if call.from_user.id != ADMIN_ID:
+    #     return
+
+    await call.message.delete()
+
+
+# ---------------- CLEAR ----------------
+
+@dp.callback_query(F.data.startswith("clear_"))
+async def clear(call: CallbackQuery):
     if call.from_user.id != ADMIN_ID:
         return
 
@@ -283,11 +325,16 @@ async def delete(call: CallbackQuery):
         save_users(users)
 
         try:
-            await bot.send_message(uid, "❌ Подписка удалена")
+            await bot.send_message(uid, "❌ Доступ закрыт")
         except:
             pass
 
-    await call.message.answer("🗑 Удалено")
+    u = load_users().get(uid)
+
+    first_name = u.get("first_name") or "Без имени"
+    username = u.get("username") or "без_username"
+
+    await call.message.answer("🗑 Доступ закрыт для " + first_name + " @" + username + " (" + uid + ")")
 
 
 # ---------------- BROADCAST ----------------
@@ -297,17 +344,53 @@ async def broadcast(call: CallbackQuery):
     if call.from_user.id != ADMIN_ID:
         return
     
+    # await call.message.delete()
+
     broadcast_mode[call.from_user.id] = True
-    await call.message.answer("📢 Введите сообщение для рассылки", reply_markup=cancel_broadcast_kb())
+    new_message = await call.message.answer("📢 Введите сообщение для рассылки", reply_markup=cancel_kb())
+
+    last_bot_messages[call.from_user.id] = new_message.message_id
 
 
-@dp.callback_query(F.data == "cancel_broadcast")
-async def cancel_broadcast(call: CallbackQuery):
+@dp.callback_query(F.data == "cancel")
+async def cancel(call: CallbackQuery):
     if call.from_user.id != ADMIN_ID:
         return
 
-    broadcast_mode[call.from_user.id] = False
-    await call.message.answer("❌ Рассылка отменена")
+    await call.message.delete()
+
+    # broadcast_mode[call.from_user.id] = False
+    custom_date_state.pop(call.from_user.id, None)
+    pending_sub_text.pop(call.from_user.id, None)
+    broadcast_mode.pop(call.from_user.id, None)
+    delet_messages = await call.message.answer("❌ Действие отменено")
+    # kb = admin_kb() if call.from_user.id == ADMIN_ID else base_kb()
+    # await call.message.answer("👋 Добро пожаловать!", reply_markup=kb)
+    await asyncio.sleep(5)
+    try:
+        await delet_messages.delete()
+    except:
+        pass
+
+
+# ---------------- BACK ----------------
+
+@dp.callback_query(F.data.startswith("backup"))
+async def back(call: CallbackQuery):
+    if call.from_user.id != ADMIN_ID:
+        return
+
+    backup_patch = backup_json("users.json")
+
+    file = FSInputFile(backup_patch)
+    await call.message.answer_document(file, caption="📂 Бэкап пользователей")
+    if os.path.exists(backup_patch):
+        os.remove(backup_patch)
+        print(f"✅ Файл {backup_patch} удален")
+        return True
+    else:
+        print(f"❌ Файл {backup_patch} не найден")
+        return False
 
 
 # ---------------- ROUTER ----------------
@@ -315,6 +398,7 @@ async def cancel_broadcast(call: CallbackQuery):
 @dp.message()
 async def router(message: Message):
     if message.from_user.id != ADMIN_ID:
+        await message.delete()
         return
 
     admin_id = message.from_user.id
@@ -327,10 +411,17 @@ async def router(message: Message):
         users[uid]["subscription_text"] = message.text
         save_users(users)
 
-        await message.answer("✅ Доступ установлен")
+        await bot.delete_message(message.chat.id, message_id=last_bot_messages[message.from_user.id])
+        await message.delete()
+        delet_messages = await message.answer("✅ Доступ установлен")
+        await asyncio.sleep(5)
+        try:
+            await delet_messages.delete()
+        except:
+            pass
 
         try:
-            await bot.send_message(uid, f"📦 Доступ:\n{message.text}")
+            await bot.send_message(uid, f"📦 Выдана подписка")
         except:
             pass
 
@@ -351,7 +442,14 @@ async def router(message: Message):
             users[uid]["notified_0day"] = False
             save_users(users)
 
-            await message.answer("✅ Установлено")
+            await bot.delete_message(message.chat.id, message_id=last_bot_messages[message.from_user.id])
+            await message.delete()
+            delet_messages = await message.answer("✅ Установлено")
+            await asyncio.sleep(5)
+            try:
+                await delet_messages.delete()
+            except:
+                pass
 
             try:
                 await bot.send_message(uid, f"📅 До: {dt}")
@@ -359,7 +457,14 @@ async def router(message: Message):
                 pass
 
         except:
-            await message.answer("❌ Формат: YYYY-MM-DD HH:MM")
+            await bot.delete_message(message.chat.id, message_id=last_bot_messages[message.from_user.id])
+            await message.delete()
+            delet_messages = await message.answer("❌ Формат: YYYY-MM-DD HH:MM")
+            await asyncio.sleep(5)
+            try:
+                await delet_messages.delete()
+            except:
+                pass
 
         custom_date_state.pop(admin_id)
         return
@@ -375,7 +480,14 @@ async def router(message: Message):
                 pass
 
         broadcast_mode[admin_id] = False
-        await message.answer("✅ Рассылка отправлена")
+        await bot.delete_message(message.chat.id, message_id=last_bot_messages[message.from_user.id])
+        await message.delete()
+        delet_messages = await message.answer("✅ Рассылка отправлена")
+        await asyncio.sleep(5)
+        try:
+            await delet_messages.delete()
+        except:
+            pass
 
 
 # ---------------- CHECK SUBS ----------------
@@ -393,7 +505,9 @@ async def check():
         if (end.date() - n.date()).days == 1 and not u.get("notified_1day"):
             try:
                 await bot.send_message(uid, "⚠️ Подписка заканчивается завтра!")
-                await bot.send_message(ADMIN_ID, f"⚠️ {u['first_name']} ({uid}) заканчивается завтра")
+                first_name = u.get("first_name") or "Без имени"
+                username = u.get("username") or "без_username"
+                await bot.send_message(ADMIN_ID, f"⚠️ {first_name} (@{username}) заканчивается завтра")
             except:
                 pass
 
@@ -401,7 +515,9 @@ async def check():
         elif (end.date() - n.date()).days == 0 and not u.get("notified_0day"):
             try:
                 await bot.send_message(uid, "⚠️ Подписка закончилась!")
-                await bot.send_message(ADMIN_ID, f"⚠️  {u['first_name']} ({uid}) закончилась")
+                first_name = u.get("first_name") or "Без имени"
+                username = u.get("username") or "без_username"
+                await bot.send_message(ADMIN_ID, f"⚠️  {first_name} (@{username}) закончилась")
             except:
                 pass
 
@@ -416,10 +532,33 @@ async def scheduler():
         await asyncio.sleep(3600)
 
 
+# ---------------- AUTO BACKUP ----------------
+
+async def auto_backup():
+    while True:
+        now = datetime.now(ZoneInfo("Europe/Moscow"))
+        target_time = now.replace(hour=3, minute=0, second=0, microsecond=0)
+
+        if now > target_time:
+            target_time = target_time.replace(day=now.day + 1)
+        wait_seconds = (target_time - now).total_seconds()
+        await asyncio.sleep(wait_seconds)
+
+        backup_patch = backup_json("users.json")
+
+        file = FSInputFile(backup_patch)
+        await bot.send_document(chat_id=ADMIN_ID, document=file, caption="📂 Ежедневный бэкап")
+        if os.path.exists(backup_patch):
+            os.remove(backup_patch)
+            print(f"✅ Файл {backup_patch} удален")
+        else:
+            print(f"❌ Файл {backup_patch} не найден")
+
 # ---------------- MAIN ----------------
 
 async def main():
     asyncio.create_task(scheduler())
+    asyncio.create_task(auto_backup())
     await dp.start_polling(bot)
 
 
