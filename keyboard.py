@@ -1,7 +1,6 @@
-from datetime import datetime
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-from utils import now
+from storage import get_user_status
 
 # ---------------- KEYBOARDS ----------------
 
@@ -61,21 +60,22 @@ def user_manage_kb(uid):
 def users_kb(users):
     kb = []
     for uid, u in users.items():
-        if u.get("subscription_end") == None and u.get("subscription_text") == None:
+        status = get_user_status(u)
+        if status == "empty":
             kb.append([
                 InlineKeyboardButton(
                     text=f"‼️ | {u.get('first_name')} (@{u.get('username')})",
                     callback_data=f"user_{uid}"
                 )
             ])
-        elif u.get("subscription_end") == None or (u.get("subscription_end") and datetime.fromisoformat(u["subscription_end"]) < now()):
+        elif status in {"no_date", "expired"}:
             kb.append([
                 InlineKeyboardButton(
                     text=f"⌛️ | {u.get('first_name')} (@{u.get('username')})",
                     callback_data=f"user_{uid}"
                 )
             ])
-        elif u.get("subscription_text") == None:
+        elif status == "no_access":
             kb.append([
                 InlineKeyboardButton(
                     text=f"❌ | {u.get('first_name')} (@{u.get('username')})",
