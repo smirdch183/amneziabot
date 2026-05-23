@@ -9,6 +9,10 @@
 - 📅 Управление подписками (даты окончания)
 - 📦 Автоматические бэкапы базы данных
 
+## Внимание!
+
+### Все пути должны быть строго без пробелов и русского языка
+
 ## Как развернуть
 
 ### Установка
@@ -20,14 +24,20 @@ cd ./amneziabot
 
 ### Python
 
-Установка python3
+Установка python3 linux
 ```bash
 sudo apt install python3 python3-venv
 ```
+[Установка Windows](https://www.python.org/downloads/)
 
-Создание виртуального окружения
+Создание виртуального окружения Linux
 ```bash
 python3 -m venv .venv
+```
+
+Создание виртуального окружения Windows
+```bash
+python -m venv .venv
 ```
 
 ### Настройка
@@ -39,6 +49,12 @@ Linux
 nano config.py
 ```
 
+Windows
+```bash
+edit config.py
+```
+Или через GUI
+
 ### Docker
 
 Установка Docker
@@ -46,7 +62,7 @@ nano config.py
 https://docs.docker.com/engine/install/
 ```
 
-Настройка фала Dockerfile
+<!-- Настройка фала Dockerfile
 ```bash
 nano Dockerfile
 ```
@@ -59,8 +75,9 @@ COPY . .
 RUN pip install --no-cache-dir -r requirements.txt
 CMD ["python", "bot.py"]
 ```
-ctrl+x y Enter
+ctrl+x y Enter -->
 
+Запуск бота
 ```bash
 docker build -t amneziabot .
 docker run -d -v $(pwd)/users.json:/app/users.json --name amneziabot amneziabot
