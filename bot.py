@@ -1,8 +1,8 @@
-import json
 import asyncio
 import logging
 import sys
 import os
+from html import escape
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -11,52 +11,69 @@ from aiogram.types import Message, CallbackQuery, FSInputFile
 # from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command
 
-from config import TOKEN, ADMIN_ID
+from config import TOKEN, ADMIN_ID, WEB_HOST, WEB_PORT
 from keyboard import *
 from utils import now, backup_json
+from storage import load_users, save_users, add_user
+from web_admin import start_web_admin
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
-
-DB_FILE = "users.json"
 
 broadcast_mode = {}
 pending_sub_text = {}
 custom_date_state = {}
 last_bot_messages = {}
+active_bot_messages = {}
 
-# ---------------- JSON ----------------
 
-def load_users():
+async def safe_delete_message(chat_id, message_id):
+    if not message_id:
+        return
     try:
-        with open(DB_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except:
-        return {}
-
-def save_users(data):
-    with open(DB_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=4, ensure_ascii=False)
+        await bot.delete_message(chat_id, message_id)
+    except Exception:
+        pass
 
 
-def add_user(user_id, username, first_name):
-    users = load_users()
-    uid = str(user_id)
+async def delete_active_message(chat_id, except_message_id=None):
+    message_id = active_bot_messages.get(chat_id)
+    if message_id and message_id != except_message_id:
+        await safe_delete_message(chat_id, message_id)
+    active_bot_messages.pop(chat_id, None)
 
-    if uid not in users:
-        users[uid] = {
-            "first_name": first_name,
-            "username": username,
-            "subscription_text": None,
-            "subscription_end": None,
-            "notified_1day": False,
-            "notified_0day": False
-        }
-        save_users(users)
-        return True
 
-    return False
+async def answer_clean(message: Message, text, **kwargs):
+    await delete_active_message(message.chat.id)
+    sent = await message.answer(text, **kwargs)
+    active_bot_messages[message.chat.id] = sent.message_id
+    return sent
 
+
+async def edit_or_answer_clean(call: CallbackQuery, text, **kwargs):
+    await call.answer()
+    chat_id = call.message.chat.id
+    active_bot_messages[chat_id] = call.message.message_id
+    try:
+        await call.message.edit_text(text, **kwargs)
+        return call.message
+    except Exception:
+        await safe_delete_message(chat_id, call.message.message_id)
+        sent = await call.message.answer(text, **kwargs)
+        active_bot_messages[chat_id] = sent.message_id
+        return sent
+
+
+async def show_temp_message(message: Message, text, seconds=4, **kwargs):
+    sent = await answer_clean(message, text, **kwargs)
+    await asyncio.sleep(seconds)
+    await safe_delete_message(sent.chat.id, sent.message_id)
+    active_bot_messages.pop(sent.chat.id, None)
+    return sent
+
+
+def format_broadcast_message(text):
+    return f"📢 <b>ОПОВЕЩЕНИЕ</b>\n{escape(text)}"
 
 # ---------------- START ----------------
 
@@ -82,7 +99,11 @@ async def start(message: Message):
 
     kb = admin_kb() if message.from_user.id == ADMIN_ID else base_kb()
 
-    await message.answer("👋 Добро пожаловать!", reply_markup=kb)
+    try:
+        await message.delete()
+    except Exception:
+        pass
+    await answer_clean(message, "👋 Добро пожаловать!", reply_markup=kb)
 
 
 # ---------------- MY SUB ----------------
@@ -95,27 +116,22 @@ async def my_sub(call: CallbackQuery):
     u = users.get(uid)
 
     if not u or not u.get("subscription_text"):
-        delet_messages = await call.message.answer("❌ Подписка не активна")
-        await asyncio.sleep(5)
-        try:
-            await delet_messages.delete()
-        except:
-            pass
+        await call.answer("❌ Подписка не активна", show_alert=True)
+        return
+
+    if not u.get("subscription_end"):
+        await call.answer("❌ Срок подписки не указан", show_alert=True)
         return
     
     end = datetime.fromisoformat(u["subscription_end"])
     days_left = (end.date() - now().date()).days
 
     if days_left <= 0:
-        delet_messages = await call.message.answer("❌ Ваша подписка истекла")
-        await asyncio.sleep(5)
-        try:
-            await delet_messages.delete()
-        except:
-            pass
+        await call.answer("❌ Ваша подписка истекла", show_alert=True)
         return
 
-    await call.message.answer(
+    await edit_or_answer_clean(
+        call,
         f"📅 Подписка:\n"
         f"⏳ До: {end.strftime('%Y-%m-%d %H:%M')}\n"
         f"📊 Осталось дней: {days_left}\n"
@@ -136,7 +152,7 @@ async def users(call: CallbackQuery):
     if call.from_user.id != ADMIN_ID:
         return
 
-    await call.message.answer("Дата и время сейчас: " + now().strftime("%Y-%m-%d %H:%M:%S") + "\n‼️ - Пустой\n⌛️ - Закончилась подписка\n❌ - Подски нет\n👥 Пользователи:", reply_markup=users_kb(load_users()))
+    await edit_or_answer_clean(call, "Дата и время сейчас: " + now().strftime("%Y-%m-%d %H:%M:%S") + "\n‼️ - Пустой\n⌛️ - Закончилась подписка\n❌ - Подски нет\n👥 Пользователи:", reply_markup=users_kb(load_users()))
 
 
 @dp.callback_query(F.data.startswith("user_"))
@@ -150,7 +166,8 @@ async def user_open(call: CallbackQuery):
     if not u:
         return
 
-    await call.message.answer(
+    await edit_or_answer_clean(
+        call,
         f"👤 {u['first_name']}\n"
         f"ID: {uid}\n"
         f"Username: @{u.get('username')}\n"
@@ -192,12 +209,15 @@ async def add_days(call: CallbackQuery):
     except:
         pass
 
-    delet_messages = await call.message.answer("✅ Обновлено")
-    await asyncio.sleep(5)
-    try:
-        await delet_messages.delete()
-    except:
-        pass
+    await edit_or_answer_clean(
+        call,
+        f"👤 {u['first_name']}\n"
+        f"ID: {uid}\n"
+        f"Username: @{u.get('username')}\n"
+        f"Доступ: {u.get('subscription_text')}\n"
+        f"До: {u.get('subscription_end')}",
+        reply_markup=user_manage_kb(uid)
+    )
 
 
 # ---------------- CUSTOM DATE ----------------
@@ -207,12 +227,10 @@ async def custom(call: CallbackQuery):
     if call.from_user.id != ADMIN_ID:
         return
 
-    await call.message.delete()
-
     uid = call.data.split("_")[1]
     custom_date_state[call.from_user.id] = uid
 
-    new_message = await call.message.answer("📅 Введите дату: YYYY-MM-DD HH:MM", reply_markup=cancel_kb())
+    new_message = await edit_or_answer_clean(call, "📅 Введите дату: YYYY-MM-DD HH:MM", reply_markup=cancel_kb())
 
     last_bot_messages[call.from_user.id] = new_message.message_id
 
@@ -224,12 +242,10 @@ async def setsub(call: CallbackQuery):
     if call.from_user.id != ADMIN_ID:
         return
 
-    await call.message.delete()
-
     uid = call.data.split("_")[1]
     pending_sub_text[call.from_user.id] = uid
 
-    new_message = await call.message.answer("✍️ Введите текст доступа:", reply_markup=cancel_kb())
+    new_message = await edit_or_answer_clean(call, "✍️ Введите текст доступа:", reply_markup=cancel_kb())
 
     last_bot_messages[call.from_user.id] = new_message.message_id
 
@@ -241,8 +257,6 @@ async def delete(call: CallbackQuery):
     if call.from_user.id != ADMIN_ID:
         return
 
-    await call.message.delete()
-
     uid = call.data.split("_")[1]
 
     # users = load_users()
@@ -252,7 +266,7 @@ async def delete(call: CallbackQuery):
     first_name = u.get("first_name") or "Без имени"
     username = u.get("username") or "без_username"
 
-    await call.message.answer("🗑 Удалить " + first_name + " @" + username + " (" + uid + ")?", reply_markup=confirm_delete_kb(uid))
+    await edit_or_answer_clean(call, "🗑 Удалить " + first_name + " @" + username + " (" + uid + ")?", reply_markup=confirm_delete_kb(uid))
 
     # if uid in users:
     #     del users[uid]
@@ -281,9 +295,7 @@ async def confirm_del(call: CallbackQuery):
     first_name = u.get("first_name") or "Без имени"
     username = u.get("username") or "без_username"
 
-    await call.message.delete()
-
-    await call.message.answer("🗑 Удален " + first_name + " @" + username + " (" + uid + ")")
+    await edit_or_answer_clean(call, "🗑 Удален " + first_name + " @" + username + " (" + uid + ")")
 
 
 # ---------------- NOT CONFIRM DELETE ----------------
@@ -303,7 +315,9 @@ async def back(call: CallbackQuery):
     # if call.from_user.id != ADMIN_ID:
     #     return
 
-    await call.message.delete()
+    await safe_delete_message(call.message.chat.id, call.message.message_id)
+    active_bot_messages.pop(call.message.chat.id, None)
+    await call.answer()
 
 
 # ---------------- CLEAR ----------------
@@ -334,7 +348,7 @@ async def clear(call: CallbackQuery):
     first_name = u.get("first_name") or "Без имени"
     username = u.get("username") or "без_username"
 
-    await call.message.answer("🗑 Доступ закрыт для " + first_name + " @" + username + " (" + uid + ")")
+    await edit_or_answer_clean(call, "🗑 Доступ закрыт для " + first_name + " @" + username + " (" + uid + ")")
 
 
 # ---------------- BROADCAST ----------------
@@ -344,10 +358,8 @@ async def broadcast(call: CallbackQuery):
     if call.from_user.id != ADMIN_ID:
         return
     
-    # await call.message.delete()
-
     broadcast_mode[call.from_user.id] = True
-    new_message = await call.message.answer("📢 Введите сообщение для рассылки", reply_markup=cancel_kb())
+    new_message = await edit_or_answer_clean(call, "📢 Введите сообщение для рассылки", reply_markup=cancel_kb())
 
     last_bot_messages[call.from_user.id] = new_message.message_id
 
@@ -357,20 +369,16 @@ async def cancel(call: CallbackQuery):
     if call.from_user.id != ADMIN_ID:
         return
 
-    await call.message.delete()
-
     # broadcast_mode[call.from_user.id] = False
     custom_date_state.pop(call.from_user.id, None)
     pending_sub_text.pop(call.from_user.id, None)
     broadcast_mode.pop(call.from_user.id, None)
-    delet_messages = await call.message.answer("❌ Действие отменено")
+    await edit_or_answer_clean(call, "❌ Действие отменено")
     # kb = admin_kb() if call.from_user.id == ADMIN_ID else base_kb()
     # await call.message.answer("👋 Добро пожаловать!", reply_markup=kb)
     await asyncio.sleep(5)
-    try:
-        await delet_messages.delete()
-    except:
-        pass
+    await safe_delete_message(call.message.chat.id, call.message.message_id)
+    active_bot_messages.pop(call.message.chat.id, None)
 
 
 # ---------------- BACK ----------------
@@ -383,6 +391,9 @@ async def back(call: CallbackQuery):
     backup_patch = backup_json("users.json")
 
     file = FSInputFile(backup_patch)
+    await call.answer()
+    await safe_delete_message(call.message.chat.id, call.message.message_id)
+    active_bot_messages.pop(call.message.chat.id, None)
     await call.message.answer_document(file, caption="📂 Бэкап пользователей")
     if os.path.exists(backup_patch):
         os.remove(backup_patch)
@@ -411,14 +422,9 @@ async def router(message: Message):
         users[uid]["subscription_text"] = message.text
         save_users(users)
 
-        await bot.delete_message(message.chat.id, message_id=last_bot_messages[message.from_user.id])
+        await safe_delete_message(message.chat.id, last_bot_messages.get(message.from_user.id))
         await message.delete()
-        delet_messages = await message.answer("✅ Доступ установлен")
-        await asyncio.sleep(5)
-        try:
-            await delet_messages.delete()
-        except:
-            pass
+        await show_temp_message(message, "✅ Доступ установлен")
 
         try:
             await bot.send_message(uid, f"📦 Выдана подписка")
@@ -442,14 +448,9 @@ async def router(message: Message):
             users[uid]["notified_0day"] = False
             save_users(users)
 
-            await bot.delete_message(message.chat.id, message_id=last_bot_messages[message.from_user.id])
+            await safe_delete_message(message.chat.id, last_bot_messages.get(message.from_user.id))
             await message.delete()
-            delet_messages = await message.answer("✅ Установлено")
-            await asyncio.sleep(5)
-            try:
-                await delet_messages.delete()
-            except:
-                pass
+            await show_temp_message(message, "✅ Установлено")
 
             try:
                 await bot.send_message(uid, f"📅 До: {dt}")
@@ -457,14 +458,9 @@ async def router(message: Message):
                 pass
 
         except:
-            await bot.delete_message(message.chat.id, message_id=last_bot_messages[message.from_user.id])
+            await safe_delete_message(message.chat.id, last_bot_messages.get(message.from_user.id))
             await message.delete()
-            delet_messages = await message.answer("❌ Формат: YYYY-MM-DD HH:MM")
-            await asyncio.sleep(5)
-            try:
-                await delet_messages.delete()
-            except:
-                pass
+            await show_temp_message(message, "❌ Формат: YYYY-MM-DD HH:MM")
 
         custom_date_state.pop(admin_id)
         return
@@ -475,19 +471,14 @@ async def router(message: Message):
 
         for uid in users:
             try:
-                await bot.send_message(uid, f"📢 {message.text}")
+                await bot.send_message(uid, format_broadcast_message(message.text), parse_mode="HTML")
             except:
                 pass
 
         broadcast_mode[admin_id] = False
-        await bot.delete_message(message.chat.id, message_id=last_bot_messages[message.from_user.id])
+        await safe_delete_message(message.chat.id, last_bot_messages.get(message.from_user.id))
         await message.delete()
-        delet_messages = await message.answer("✅ Рассылка отправлена")
-        await asyncio.sleep(5)
-        try:
-            await delet_messages.delete()
-        except:
-            pass
+        await show_temp_message(message, "✅ Рассылка отправлена")
 
 
 # ---------------- CHECK SUBS ----------------
@@ -559,6 +550,7 @@ async def auto_backup():
 async def main():
     asyncio.create_task(scheduler())
     asyncio.create_task(auto_backup())
+    await start_web_admin(bot, WEB_HOST, WEB_PORT)
     await dp.start_polling(bot)
 
 

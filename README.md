@@ -1,5 +1,22 @@
 # <p align="center">amneziabot</p>
 
+## Web admin
+
+Бот поднимает веб-панель вместе с polling. По умолчанию она доступна на `http://0.0.0.0:8080`.
+
+Добавьте `.env` рядом с `bot.py`:
+
+```env
+TOKEN=123456:telegram-token
+ADMIN_ID=123456789
+ADMIN_LOGIN=admin
+ADMIN_PASS=change-me
+WEB_HOST=0.0.0.0
+WEB_PORT=8080
+```
+
+В панели доступны пользователи, статусы подписок, редактирование доступа, продление дат, очистка, удаление, рассылка, скачивание бэкапа и переключение темы.
+
 <p align="center">Телеграм бот для просмотр информации и доступом к амнезии (не интегрирована с амнезией).</p>
 <p align="center"><i>Только в образовательных целях.</i></p>
 
@@ -80,7 +97,7 @@ ctrl+x y Enter -->
 Запуск бота
 ```bash
 docker build -t amneziabot .
-docker run -d -v $(pwd)/users.json:/app/users.json --name amneziabot amneziabot
+docker run -d --env-file .env -p 8080:8080 -v $(pwd)/users.json:/app/users.json --name amneziabot amneziabot
 ```
 
 ### Docker Полезные команды
@@ -101,7 +118,7 @@ docker attach amneziabot
 
 Запуск и просмотр сразу логов в python
 ```bash
-docker run -d -v $(pwd)/users.json:/app/users.json --name amneziabot amneziabot && docker attach amneziabot
+docker run -d --env-file .env -p 8080:8080 -v $(pwd)/users.json:/app/users.json --name amneziabot amneziabot && docker attach amneziabot
 ```
 
 ## Зависимости
