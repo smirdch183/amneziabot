@@ -1,34 +1,21 @@
 # <p align="center">amneziabot</p>
 
-## Web admin
-
-Бот поднимает веб-панель вместе с polling. По умолчанию она доступна на `http://0.0.0.0:8080`.
-
-Добавьте `.env` рядом с `bot.py`:
-
-```env
-TOKEN=123456:telegram-token
-ADMIN_ID=123456789
-ADMIN_LOGIN=admin
-ADMIN_PASS=change-me
-WEB_HOST=0.0.0.0
-WEB_PORT=8080
-```
-
-В панели доступны пользователи, статусы подписок, редактирование доступа, продление дат, очистка, удаление, рассылка, скачивание бэкапа и переключение темы.
-
 <p align="center">Телеграм бот для просмотр информации и доступом к амнезии (не интегрирована с амнезией).</p>
 <p align="center"><i>Только в образовательных целях.</i></p>
 
 ## 📋 Функционал
 
+- 🌐 Бот поднимает веб-панель вместе с polling. По умолчанию она доступна на `http://0.0.0.0:8080`.
 - 👥 Управление пользователями (добавление, удаление, просмотр)
 - 📅 Управление подписками (даты окончания)
-- 📦 Автоматические бэкапы базы данных
+- 🪧 Автоматические бэкапы базы данных
+- 📦 В панели доступны пользователи, статусы подписок, редактирование доступа, продление дат, очистка, удаление, рассылка, скачивание бэкапа и переключение темы.
 
 ## Внимание!
 
 ### Все пути должны быть строго без пробелов и русского языка
+
+### Для Windows должен быть установлен WSL (В поисковеке пишите wsl и устанавливаете его после перезагружаете пк)
 
 ## Как развернуть
 
@@ -59,18 +46,16 @@ python -m venv .venv
 
 ### Настройка
 
-Откройте файл config.py и замените на свои данные
+Добавьте `.env` рядом с `bot.py`:
 
-Linux
-```bash
-nano config.py
+```env
+TOKEN=123456:telegram-token
+ADMIN_ID=123456789
+ADMIN_LOGIN=admin
+ADMIN_PASS=change-me
+WEB_HOST=0.0.0.0
+WEB_PORT=8080
 ```
-
-Windows
-```bash
-edit config.py
-```
-Или через GUI
 
 ### Docker
 
@@ -94,10 +79,19 @@ CMD ["python", "bot.py"]
 ```
 ctrl+x y Enter -->
 
-Запуск бота
+Сборка бота
 ```bash
 docker build -t amneziabot .
+```
+
+Запуск бота на Linux
+```bash
 docker run -d --env-file .env -p 8080:8080 -v $(pwd)/users.json:/app/users.json --name amneziabot amneziabot
+```
+
+Запуск бота на Windows PowerShell
+```bash
+docker run -d --env-file .env -p 8080:8080 -v ${pwd}/users.json:/app/users.json --name amneziabot amneziabot
 ```
 
 ### Docker Полезные команды
@@ -116,9 +110,14 @@ docker rm amneziabot
 docker attach amneziabot
 ```
 
-Запуск и просмотр сразу логов в python
+Запуск и просмотр сразу логов в python на Linux
 ```bash
 docker run -d --env-file .env -p 8080:8080 -v $(pwd)/users.json:/app/users.json --name amneziabot amneziabot && docker attach amneziabot
+```
+
+Запуск и просмотр сразу логов в python на Windows PowerShell
+```bash
+docker run -d --env-file .env -p 8080:8080 -v ${pwd}/users.json:/app/users.json --name amneziabot amneziabot ; docker attach amneziabot
 ```
 
 ## Зависимости
