@@ -117,29 +117,29 @@ async def my_sub(call: CallbackQuery):
     u = users.get(uid)
 
     if not u or not u.get("subscription_text"):
-        await call.answer("Пока активной подписки нет. Напишите администратору, чтобы получить доступ.", show_alert=True)
+        await call.answer("❌Пока активной подписки нет. Напишите администратору, чтобы получить доступ.", show_alert=True)
         return
 
     if not u.get("subscription_end"):
-        await call.answer("Доступ найден, но дата окончания еще не указана. Администратор скоро поправит.", show_alert=True)
+        await call.answer("❌Доступ найден, но дата окончания еще не указана. Администратор скоро поправит.", show_alert=True)
         return
     
     end = datetime.fromisoformat(u["subscription_end"])
     days_left = (end.date() - now().date()).days
 
     if days_left <= 0:
-        await call.answer("Подписка уже закончилась. Обновите доступ у администратора.", show_alert=True)
+        await call.answer("❌Подписка уже закончилась. Обновите доступ у администратора.", show_alert=True)
         return
 
     await edit_or_answer_clean(
         call,
         f"📅 Ваша подписка активна\n\n"
-        f"Работает до: {end.strftime('%Y-%m-%d %H:%M')}\n"
-        f"Осталось дней: {days_left}\n\n"
-        f"Не передавайте VPN другим пользователям: из-за этого подключение могут заблокировать.\n\n"
-        f"Откройте приложение AmneziaVPN и вставьте данные доступа:\n"
+        f"⏳ Работает до: {end.strftime('%Y-%m-%d %H:%M')}\n"
+        f"📊 Осталось дней: {days_left}\n\n"
+        f"‼️ Не передавайте VPN другим пользователям: из-за этого подключение могут заблокировать.\n\n"
+        f"📱 Откройте приложение AmneziaVPN и вставьте данные доступа:\n"
         f"https://github.com/amnezia-vpn/amnezia-client/releases\n"
-        f"\nНажмите на блок ниже, чтобы скопировать:\n"
+        f"\n👇Нажмите на блок ниже, чтобы скопировать:\n"
         f"`{u['subscription_text']}`",
         parse_mode="Markdown",
         reply_markup=back_kb()
@@ -459,7 +459,7 @@ async def router(message: Message):
         except:
             await safe_delete_message(message.chat.id, last_bot_messages.get(message.from_user.id))
             await message.delete()
-            await show_temp_message(message, "Не получилось распознать дату. Нужен формат: YYYY-MM-DD HH:MM")
+            await show_temp_message(message, "❌Не получилось распознать дату. Нужен формат: YYYY-MM-DD HH:MM")
 
         custom_date_state.pop(admin_id)
         return
