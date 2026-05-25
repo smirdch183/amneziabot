@@ -23,6 +23,7 @@ load_dotenv()
 TOKEN = os.getenv("TOKEN", "")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 
+GUI = os.getenv("GUI").lower() == "true"
 ADMIN_LOGIN = os.getenv("ADMIN_LOGIN", "admin")
 ADMIN_PASS = os.getenv("ADMIN_PASS", "")
 WEB_HOST = os.getenv("WEB_HOST", "0.0.0.0")

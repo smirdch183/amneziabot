@@ -12,7 +12,7 @@ from aiogram.types import Message, CallbackQuery, FSInputFile
 # from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command
 
-from config import TOKEN, ADMIN_ID, WEB_HOST, WEB_PORT
+from config import TOKEN, ADMIN_ID, GUI, WEB_HOST, WEB_PORT
 from keyboard import *
 from utils import now, backup_json
 from storage import load_users, save_users, add_user
@@ -546,21 +546,22 @@ async def auto_backup():
 
 # ---------------- MAIN ----------------
 
-def parse_args():
-    parser = argparse.ArgumentParser(description="Telegram bot with optional web admin panel")
-    parser.add_argument("-nogui", action="store_true", help="start bot without web admin interface")
-    return parser.parse_args()
+# def parse_args():
+#     parser = argparse.ArgumentParser(description="Telegram bot with optional web admin panel")
+#     parser.add_argument("-nogui", action="store_true", help="start bot without web admin interface")
+#     return parser.parse_args()
 
 
-async def main(no_gui=False):
+async def main():
     asyncio.create_task(scheduler())
     asyncio.create_task(auto_backup())
-    if not no_gui:
+    gui = GUI
+    if gui:
         await start_web_admin(bot, WEB_HOST, WEB_PORT)
     await dp.start_polling(bot)
 
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, stream=sys.stdout)
-    args = parse_args()
-    asyncio.run(main(no_gui=args.nogui))
+    # args = parse_args()
+    asyncio.run(main())
