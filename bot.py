@@ -1,4 +1,5 @@
 import asyncio
+import argparse
 import logging
 import sys
 import os
@@ -73,7 +74,7 @@ async def show_temp_message(message: Message, text, seconds=4, **kwargs):
 
 
 def format_broadcast_message(text):
-    return f"📢 <b>ОПОВЕЩЕНИЕ</b>\n{escape(text)}"
+    return f"📣 <b>Уведомление</b>\n\n{escape(text)}"
 
 # ---------------- START ----------------
 
@@ -89,7 +90,7 @@ async def start(message: Message):
         try:
             await bot.send_message(
                 ADMIN_ID,
-                f"🆕 Новый пользователь:\n"
+                f"🆕 В боте новый пользователь\n\n"
                 f"ID: {message.from_user.id}\n"
                 f"Имя: {message.from_user.first_name}\n"
                 f"@{message.from_user.username}"
@@ -103,7 +104,7 @@ async def start(message: Message):
         await message.delete()
     except Exception:
         pass
-    await answer_clean(message, "👋 Добро пожаловать!", reply_markup=kb)
+    await answer_clean(message, "👋 Привет! Я на месте. Выберите нужное действие ниже.", reply_markup=kb)
 
 
 # ---------------- MY SUB ----------------
@@ -116,29 +117,29 @@ async def my_sub(call: CallbackQuery):
     u = users.get(uid)
 
     if not u or not u.get("subscription_text"):
-        await call.answer("❌ Подписка не активна", show_alert=True)
+        await call.answer("❌Пока активной подписки нет. Напишите администратору, чтобы получить доступ.", show_alert=True)
         return
 
     if not u.get("subscription_end"):
-        await call.answer("❌ Срок подписки не указан", show_alert=True)
+        await call.answer("❌Доступ найден, но дата окончания еще не указана. Администратор скоро поправит.", show_alert=True)
         return
     
     end = datetime.fromisoformat(u["subscription_end"])
     days_left = (end.date() - now().date()).days
 
     if days_left <= 0:
-        await call.answer("❌ Ваша подписка истекла", show_alert=True)
+        await call.answer("❌Подписка уже закончилась. Обновите доступ у администратора.", show_alert=True)
         return
 
     await edit_or_answer_clean(
         call,
-        f"📅 Подписка:\n"
-        f"⏳ До: {end.strftime('%Y-%m-%d %H:%M')}\n"
-        f"📊 Осталось дней: {days_left}\n"
-        f"‼️Не делитесь впн с другими пользователями, в избежание блокировки данного впн или вашего подключения‼️\n"
-        f"📱 Вставьте в приложение AmneziaVpn\n"
+        f"📅 Ваша подписка активна\n\n"
+        f"⏳ Работает до: {end.strftime('%Y-%m-%d %H:%M')}\n"
+        f"📊 Осталось дней: {days_left}\n\n"
+        f"‼️ Не передавайте VPN другим пользователям: из-за этого подключение могут заблокировать.\n\n"
+        f"📱 Откройте приложение AmneziaVPN и вставьте данные доступа:\n"
         f"https://github.com/amnezia-vpn/amnezia-client/releases\n"
-        f"👇 Нажмите что бы скопировать\n"
+        f"\n👇Нажмите на блок ниже, чтобы скопировать:\n"
         f"`{u['subscription_text']}`",
         parse_mode="Markdown",
         reply_markup=back_kb()
@@ -152,7 +153,7 @@ async def users(call: CallbackQuery):
     if call.from_user.id != ADMIN_ID:
         return
 
-    await edit_or_answer_clean(call, "Дата и время сейчас: " + now().strftime("%Y-%m-%d %H:%M:%S") + "\n‼️ - Пустой\n⌛️ - Закончилась подписка\n❌ - Подски нет\n👥 Пользователи:", reply_markup=users_kb(load_users()))
+    await edit_or_answer_clean(call, "👥 Пользователи\n\nСейчас: " + now().strftime("%Y-%m-%d %H:%M:%S") + "\n\n‼️ - доступ без текста\n⌛️ - срок закончился или не задан\n❌ - доступа нет\n\nВыберите пользователя из списка:", reply_markup=users_kb(load_users()))
 
 
 @dp.callback_query(F.data.startswith("user_"))
@@ -168,7 +169,8 @@ async def user_open(call: CallbackQuery):
 
     await edit_or_answer_clean(
         call,
-        f"👤 {u['first_name']}\n"
+        f"👤 Карточка пользователя\n\n"
+        f"Имя: {u['first_name']}\n"
         f"ID: {uid}\n"
         f"Username: @{u.get('username')}\n"
         f"Доступ: {u.get('subscription_text')}\n"
@@ -205,13 +207,14 @@ async def add_days(call: CallbackQuery):
     save_users(users)
 
     try:
-        await bot.send_message(uid, f"✅ +{days} дней добавлено")
+        await bot.send_message(uid, f"✅ Подписка продлена на {days} дн. Можно продолжать пользоваться доступом.")
     except:
         pass
 
     await edit_or_answer_clean(
         call,
-        f"👤 {u['first_name']}\n"
+        f"👤 Карточка пользователя обновлена\n\n"
+        f"Имя: {u['first_name']}\n"
         f"ID: {uid}\n"
         f"Username: @{u.get('username')}\n"
         f"Доступ: {u.get('subscription_text')}\n"
@@ -230,7 +233,7 @@ async def custom(call: CallbackQuery):
     uid = call.data.split("_")[1]
     custom_date_state[call.from_user.id] = uid
 
-    new_message = await edit_or_answer_clean(call, "📅 Введите дату: YYYY-MM-DD HH:MM", reply_markup=cancel_kb())
+    new_message = await edit_or_answer_clean(call, "📅 Укажите новую дату окончания доступа\n\nФормат: YYYY-MM-DD HH:MM", reply_markup=cancel_kb())
 
     last_bot_messages[call.from_user.id] = new_message.message_id
 
@@ -245,7 +248,7 @@ async def setsub(call: CallbackQuery):
     uid = call.data.split("_")[1]
     pending_sub_text[call.from_user.id] = uid
 
-    new_message = await edit_or_answer_clean(call, "✍️ Введите текст доступа:", reply_markup=cancel_kb())
+    new_message = await edit_or_answer_clean(call, "✍️ Отправьте новый текст доступа для пользователя.", reply_markup=cancel_kb())
 
     last_bot_messages[call.from_user.id] = new_message.message_id
 
@@ -266,7 +269,7 @@ async def delete(call: CallbackQuery):
     first_name = u.get("first_name") or "Без имени"
     username = u.get("username") or "без_username"
 
-    await edit_or_answer_clean(call, "🗑 Удалить " + first_name + " @" + username + " (" + uid + ")?", reply_markup=confirm_delete_kb(uid))
+    await edit_or_answer_clean(call, "🗑 Удалить пользователя " + first_name + " @" + username + " (" + uid + ") из базы?", reply_markup=confirm_delete_kb(uid))
 
     # if uid in users:
     #     del users[uid]
@@ -295,7 +298,7 @@ async def confirm_del(call: CallbackQuery):
     first_name = u.get("first_name") or "Без имени"
     username = u.get("username") or "без_username"
 
-    await edit_or_answer_clean(call, "🗑 Удален " + first_name + " @" + username + " (" + uid + ")")
+    await edit_or_answer_clean(call, "🗑 Пользователь удален: " + first_name + " @" + username + " (" + uid + ")")
 
 
 # ---------------- NOT CONFIRM DELETE ----------------
@@ -312,12 +315,8 @@ async def confirm_del(call: CallbackQuery):
 
 @dp.callback_query(F.data.startswith("main"))
 async def back(call: CallbackQuery):
-    # if call.from_user.id != ADMIN_ID:
-    #     return
-
-    await safe_delete_message(call.message.chat.id, call.message.message_id)
-    active_bot_messages.pop(call.message.chat.id, None)
-    await call.answer()
+    kb = admin_kb() if call.from_user.id == ADMIN_ID else base_kb()
+    await edit_or_answer_clean(call, "👋 Главное меню. Что делаем дальше?", reply_markup=kb)
 
 
 # ---------------- CLEAR ----------------
@@ -339,7 +338,7 @@ async def clear(call: CallbackQuery):
         save_users(users)
 
         try:
-            await bot.send_message(uid, "❌ Доступ закрыт")
+            await bot.send_message(uid, "🔒 Доступ закрыт. Если это ошибка, напишите администратору.")
         except:
             pass
 
@@ -348,7 +347,7 @@ async def clear(call: CallbackQuery):
     first_name = u.get("first_name") or "Без имени"
     username = u.get("username") or "без_username"
 
-    await edit_or_answer_clean(call, "🗑 Доступ закрыт для " + first_name + " @" + username + " (" + uid + ")")
+    await edit_or_answer_clean(call, "🔒 Доступ закрыт для " + first_name + " @" + username + " (" + uid + ")")
 
 
 # ---------------- BROADCAST ----------------
@@ -359,7 +358,7 @@ async def broadcast(call: CallbackQuery):
         return
     
     broadcast_mode[call.from_user.id] = True
-    new_message = await edit_or_answer_clean(call, "📢 Введите сообщение для рассылки", reply_markup=cancel_kb())
+    new_message = await edit_or_answer_clean(call, "📣 Отправьте текст рассылки. Я разошлю его всем пользователям из базы.", reply_markup=cancel_kb())
 
     last_bot_messages[call.from_user.id] = new_message.message_id
 
@@ -373,7 +372,7 @@ async def cancel(call: CallbackQuery):
     custom_date_state.pop(call.from_user.id, None)
     pending_sub_text.pop(call.from_user.id, None)
     broadcast_mode.pop(call.from_user.id, None)
-    await edit_or_answer_clean(call, "❌ Действие отменено")
+    await edit_or_answer_clean(call, "Готово, действие отменено.")
     # kb = admin_kb() if call.from_user.id == ADMIN_ID else base_kb()
     # await call.message.answer("👋 Добро пожаловать!", reply_markup=kb)
     await asyncio.sleep(5)
@@ -394,7 +393,7 @@ async def back(call: CallbackQuery):
     await call.answer()
     await safe_delete_message(call.message.chat.id, call.message.message_id)
     active_bot_messages.pop(call.message.chat.id, None)
-    await call.message.answer_document(file, caption="📂 Бэкап пользователей")
+    await call.message.answer_document(file, caption="📂 Свежий бэкап пользователей готов.")
     if os.path.exists(backup_patch):
         os.remove(backup_patch)
         print(f"✅ Файл {backup_patch} удален")
@@ -424,10 +423,10 @@ async def router(message: Message):
 
         await safe_delete_message(message.chat.id, last_bot_messages.get(message.from_user.id))
         await message.delete()
-        await show_temp_message(message, "✅ Доступ установлен")
+        await show_temp_message(message, "✅ Доступ сохранен и отправлен пользователю.")
 
         try:
-            await bot.send_message(uid, f"📦 Выдана подписка")
+            await bot.send_message(uid, "🎁 Вам выдали доступ. Откройте раздел «Моя подписка», чтобы посмотреть данные подключения.")
         except:
             pass
 
@@ -450,17 +449,17 @@ async def router(message: Message):
 
             await safe_delete_message(message.chat.id, last_bot_messages.get(message.from_user.id))
             await message.delete()
-            await show_temp_message(message, "✅ Установлено")
+            await show_temp_message(message, "✅ Дата окончания обновлена.")
 
             try:
-                await bot.send_message(uid, f"📅 До: {dt}")
+                await bot.send_message(uid, f"📅 Дата окончания подписки обновлена: {dt}")
             except:
                 pass
 
         except:
             await safe_delete_message(message.chat.id, last_bot_messages.get(message.from_user.id))
             await message.delete()
-            await show_temp_message(message, "❌ Формат: YYYY-MM-DD HH:MM")
+            await show_temp_message(message, "❌Не получилось распознать дату. Нужен формат: YYYY-MM-DD HH:MM")
 
         custom_date_state.pop(admin_id)
         return
@@ -478,7 +477,7 @@ async def router(message: Message):
         broadcast_mode[admin_id] = False
         await safe_delete_message(message.chat.id, last_bot_messages.get(message.from_user.id))
         await message.delete()
-        await show_temp_message(message, "✅ Рассылка отправлена")
+        await show_temp_message(message, "✅ Рассылка отправлена пользователям.")
 
 
 # ---------------- CHECK SUBS ----------------
@@ -495,20 +494,20 @@ async def check():
 
         if (end.date() - n.date()).days == 1 and not u.get("notified_1day"):
             try:
-                await bot.send_message(uid, "⚠️ Подписка заканчивается завтра!")
+                await bot.send_message(uid, "⏳ Подписка заканчивается завтра. Чтобы не потерять доступ, продлите ее у администратора.")
                 first_name = u.get("first_name") or "Без имени"
                 username = u.get("username") or "без_username"
-                await bot.send_message(ADMIN_ID, f"⚠️ {first_name} (@{username}) заканчивается завтра")
+                await bot.send_message(ADMIN_ID, f"⏳ У {first_name} (@{username}) подписка заканчивается завтра.")
             except:
                 pass
 
             u["notified_1day"] = True
         elif (end.date() - n.date()).days == 0 and not u.get("notified_0day"):
             try:
-                await bot.send_message(uid, "⚠️ Подписка закончилась!")
+                await bot.send_message(uid, "🔒 Подписка закончилась. Для продления напишите администратору.")
                 first_name = u.get("first_name") or "Без имени"
                 username = u.get("username") or "без_username"
-                await bot.send_message(ADMIN_ID, f"⚠️  {first_name} (@{username}) закончилась")
+                await bot.send_message(ADMIN_ID, f"🔒 У {first_name} (@{username}) подписка закончилась.")
             except:
                 pass
 
@@ -538,7 +537,7 @@ async def auto_backup():
         backup_patch = backup_json("users.json")
 
         file = FSInputFile(backup_patch)
-        await bot.send_document(chat_id=ADMIN_ID, document=file, caption="📂 Ежедневный бэкап")
+        await bot.send_document(chat_id=ADMIN_ID, document=file, caption="📂 Ежедневный бэкап пользователей готов.")
         if os.path.exists(backup_patch):
             os.remove(backup_patch)
             print(f"✅ Файл {backup_patch} удален")
@@ -547,13 +546,21 @@ async def auto_backup():
 
 # ---------------- MAIN ----------------
 
-async def main():
+def parse_args():
+    parser = argparse.ArgumentParser(description="Telegram bot with optional web admin panel")
+    parser.add_argument("-nogui", action="store_true", help="start bot without web admin interface")
+    return parser.parse_args()
+
+
+async def main(no_gui=False):
     asyncio.create_task(scheduler())
     asyncio.create_task(auto_backup())
-    await start_web_admin(bot, WEB_HOST, WEB_PORT)
+    if not no_gui:
+        await start_web_admin(bot, WEB_HOST, WEB_PORT)
     await dp.start_polling(bot)
 
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, stream=sys.stdout)
-    asyncio.run(main())
+    args = parse_args()
+    asyncio.run(main(no_gui=args.nogui))
